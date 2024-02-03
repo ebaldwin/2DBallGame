@@ -13,12 +13,14 @@
 using namespace std;
 
 //some global variables
-extern float drag = 0.25;
-extern float speedLimit = 100;
+extern float drag = 0.1;
+//extern float speedLimit = 100;
 extern float pressImpulse = 4000;
-extern float pressHoldAccel = 350;
+extern float pressHoldAccel = 1000;
 extern float coeffOfRestitution = 1; //must be above 0 and logically less than 1, but more that 1 might be interesting...
 extern float cR = coeffOfRestitution*.5 + 0.5;
+extern int redScore = 0;
+extern int blueScore = 0;
 
 class Ball
 {
@@ -29,30 +31,42 @@ public:
   float mass = 1.0;
   float radius = 10;
   Color bColor;
-  bool pocket = 0;
-  Ball(float px, float py, float r, float m, Color bC, bool p)
+  int ballType;//-1 for pocket, 0 for regular ball, 1 for player1, 2 for player 2
+  bool active = 1;
+  int owner = 0;//0 is default, 1 for owned by player 1, 2 for owned by player 2
+  vector<Color> oColorArray = { ORANGE,RED,DARKBLUE };//owner color array, used to set the color of the center of each ball
+  Ball(float px, float py, float r, float m, Color bC, int own, int balltp)
   {
     pos = {px, py};
     bColor = bC;
     radius = r;
     mass = m;
-    pocket = p;
+    ballType = balltp;
+    owner = own;
+    oColorArray = {bC,RED,DARKBLUE};//owner color array, used to set the color of the center of each ball
   }
   void draw()
   {
     DrawCircleV(pos,radius,bColor);
+    DrawCircleV(pos,radius*.5,oColorArray[owner]);
+  }
+  void updateVel(float t)
+  {
+    vel.x += t*(accel.x-drag*vel.x);
+    vel.y += t*(accel.y-drag*vel.y);
   }
   void updatePos(float t)
   {
-    vel.x += t*(accel.x -drag*vel.x);
-    vel.y += t*(accel.y -drag*vel.y);
-    pos.x += t*vel.x;
-    pos.y += t*vel.y;
+    if (active)
+    {
+      pos.x += t * vel.x;
+      pos.y += t * vel.y;
+    }
   }
 
   void wallBounce()
   {
-    if(!pocket)
+    if(ballType != -1)
     {
       if((pos.x > (1220-radius)) && (vel.x >= 0))
       {
@@ -133,21 +147,71 @@ float calcCollisionTime(Ball *b1, Ball *b2)
 
 void resolveBallCollision(Ball *b1, Ball *b2)
 {
-  if(b1->pocket)
+  if(b1->ballType == -1)//if hitting pocket, move ball to score board
   {
-    b2->pos.x = 7e9;
-    b2->vel.x = 0;
-    //b2->pocket = 1; //to prevent wall rebound forces from messing with it
+    if (b2->owner == 1)
+    {
+      redScore += 1;
+      b2->active = 0;
+      b2->pos.x = 1520;
+      b2->pos.y = 50 + 30 * redScore;
+      b2->vel.x = 0;
+      b2->vel.y = 0;
+    }
+    else if (b2->owner == 2)
+    {
+      blueScore += 1;
+      b2->active = 0;
+      b2->pos.x = 1620;
+      b2->pos.y = 50 + 30 * blueScore;
+      b2->vel.x = 0;
+      b2->vel.y = 0;
+    }
+    else//ball not owned, send somewhere off screen...
+    {
+      b2->active = 0;
+      b2->pos.x = 3000;
+      b2->vel.x = 0;
+      b2->vel.y = 0;
+    }
   }
-  if(b2->pocket)
+  if(b2->ballType == -1)
   {
-    b1->pos.x = 7e9;
-    b1->vel.x = 0;
-    //b1->pocket = 1; //to make sure it stays gone forever
+    if (b1->owner == 1)
+    {
+      redScore += 1;
+      b1->active = 0;
+      b1->pos.x = 1520;
+      b1->pos.y = 50 + 30 * redScore;
+      b1->vel.x = 0;
+      b1->vel.y = 0;
+    }
+    else if (b1->owner == 2)
+    {
+      blueScore += 1;
+      b1->active = 0;
+      b1->pos.x = 1620;
+      b1->pos.y = 50 + 30 * blueScore;
+      b1->vel.x = 0;
+      b1->vel.y = 0;
+    }
+    else//ball not owned, send somewhere off screen...
+    {
+      b1->active = 0;
+      b1->pos.x = 3000;
+      b1->vel.x = 0;
+      b1->vel.y = 0;
+    }
   }
   else
   {
-    //impulse direction unit vector
+    //update ball ownership
+    if (b1->ballType == 1 && b2->ballType != 2) { b2->owner = 1; }
+    if (b2->ballType == 1 && b1->ballType != 2) { b1->owner = 1; }
+    if (b1->ballType == 2 && b2->ballType != 1) { b2->owner = 2; }
+    if (b2->ballType == 2 && b1->ballType != 1) { b2->owner = 2; }
+
+    //solve for impulse direction unit vector
     Vector2 imp = {(b1->pos.x-b2->pos.x)/sqrt(pow(b1->pos.x-b2->pos.x,2)+pow(b1->pos.y-b2->pos.y,2)),
     (b1->pos.y - b2->pos.y)/sqrt(pow(b1->pos.x - b2->pos.x,2)+pow(b1->pos.y - b2->pos.y,2))};
     //quadratic formula solve to get the impulse magnitude
@@ -175,33 +239,33 @@ int main()
   //generate starting environment - this could be done in a variety of ways
   //hard code it for now...
   //player1
-  Ball ballP1 = Ball(100,250,13.5,1,RED,0);
+  Ball ballP1 = Ball(100,250,13.5,1,RED,1,1);
   //player2
-  Ball ballP2 = Ball(100,450,13.5,1,DARKBLUE,0);
+  Ball ballP2 = Ball(100,450,13.5,1,DARKBLUE,2,2);
   //pool balls
-  Ball ball1 = Ball(920,320,13.5,1,WHITE,0);
-  Ball ball2 = Ball(944.25,334,13.5,1,GRAY,0);
-  Ball ball3 = Ball(944.25,306,13.5,1,WHITE,0);
-  Ball ball4 = Ball(968.5,348,13.5,1,WHITE,0);
-  Ball ball8 = Ball(968.5,320,13.5,1,BLACK,0);
-  Ball ball6 = Ball(968.5,292,13.5,1,GRAY,0);
-  Ball ball7 = Ball(992.75,362,13.5,1,GRAY,0);
-  Ball ball5 = Ball(992.75,334,13.5,1,WHITE,0);
-  Ball ball9 = Ball(992.75,306,13.5,1,GRAY,0);
-  Ball ball10 = Ball(992.75,278,13.5,1,GRAY,0);
-  Ball ball11 = Ball(1016.99,376,13.5,1,WHITE,0);
-  Ball ball12 = Ball(1016.99,348,13.5,1,WHITE,0);
-  Ball ball13 = Ball(1016.99,320,13.5,1,GRAY,0);
-  Ball ball14 = Ball(1016.99,292,13.5,1,WHITE,0);
-  Ball ball15 = Ball(1016.99,264,13.5,1,GRAY,0);
+  Ball ball1 = Ball(920,320,13.5,1,WHITE,0,0);
+  Ball ball2 = Ball(944.25,334,13.5,1,GRAY,0,0);
+  Ball ball3 = Ball(944.25,306,13.5,1,WHITE,0,0);
+  Ball ball4 = Ball(968.5,348,13.5,1,WHITE,0,0);
+  Ball ball8 = Ball(968.5,320,13.5,10,BLACK,0,0);
+  Ball ball6 = Ball(968.5,292,13.5,1,GRAY,0,0);
+  Ball ball7 = Ball(992.75,362,13.5,1,GRAY,0,0);
+  Ball ball5 = Ball(992.75,334,13.5,1,WHITE,0,0);
+  Ball ball9 = Ball(992.75,306,13.5,1,GRAY,0,0);
+  Ball ball10 = Ball(992.75,278,13.5,1,GRAY,0,0);
+  Ball ball11 = Ball(1016.99,376,13.5,1,WHITE,0,0);
+  Ball ball12 = Ball(1016.99,348,13.5,1,WHITE,0,0);
+  Ball ball13 = Ball(1016.99,320,13.5,1,GRAY,0,0);
+  Ball ball14 = Ball(1016.99,292,13.5,1,WHITE,0,0);
+  Ball ball15 = Ball(1016.99,264,13.5,1,GRAY,0,0);
 
-  //pockets modeled by balls b/c the collision math is already worked out...
-  Ball pocket1 = Ball(20,20,137,7e9,DARKBROWN,1);
-  Ball pocket2 = Ball(620,20,137,7e9,DARKBROWN,1);
-  Ball pocket3 = Ball(1220,20,137,7e9,DARKBROWN,1);
-  Ball pocket4 = Ball(20,620,137,7e9,DARKBROWN,1);
-  Ball pocket5 = Ball(620,620,137,7e9,DARKBROWN,1);
-  Ball pocket6 = Ball(1220,620,137,7e9,DARKBROWN,1);
+  //ballTypes modeled by balls b/c the collision math is already worked out...
+  Ball pocket1 = Ball(20,20,87,7e9,DARKBROWN,0,-1);
+  Ball pocket2 = Ball(620,20,87,7e9,DARKBROWN,0,-1);
+  Ball pocket3 = Ball(1220,20,87,7e9,DARKBROWN,0,-1);
+  Ball pocket4 = Ball(20,620,87,7e9,DARKBROWN,0,-1);
+  Ball pocket5 = Ball(620,620,87,7e9,DARKBROWN,0,-1);
+  Ball pocket6 = Ball(1220,620,87,7e9,DARKBROWN,0,-1);
 
   //walls
   Wall wall1(20,20,20,620,BROWN);
@@ -245,7 +309,7 @@ int main()
   //iterate over balls checking for spatial conflicts in ICs
   for (int i0 = 0; i0 < nBalls; i0++){
     for (int i1 = i0+1; i1 < nBalls; i1++){
-      if(ballPtrVect[i0]->pocket || ballPtrVect[i1]->pocket){continue;}
+      if(ballPtrVect[i0]->ballType==-1 || ballPtrVect[i1]->ballType==-1){continue;}
       if (distBtwBalls(ballPtrVect[i0],ballPtrVect[i1]) < 0.0)
       {
         cout << "There is a conflict in the initial conditions! Check balls located at:" << endl;
@@ -261,7 +325,7 @@ int main()
   //iterate over balls checking conflicts in ICs with walls
   for (int i0 = 0; i0 < nBalls; i0++){
     for (int i1 = 0; i1 < nWalls; i1++){
-      if(ballPtrVect[i0]->pocket){continue;}
+      if(ballPtrVect[i0]->ballType==-1){continue;}
       float nDist = distBtwBallAndWall(ballPtrVect[i0],wallPtrVect[i1]);
       cout << "nDist ball to wall is: " << nDist << endl;
       if (nDist < 0.0)
@@ -275,10 +339,17 @@ int main()
     cout << endl;
   }
 
-  //Name ideas from the kids...
-  //InitWindow(1000, 700, "Ball Knocker!!!");
-  InitWindow(1240, 700, "Knock Balls!!!");
+  int screenWidth = 1700;
+  int screenHeight = 900;
+
+  SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+  //Name ideas from the kids: Knock Balls, Ball Knocker...
+  InitWindow(screenWidth, screenHeight, "Knock Balls!!!");
   SetWindowState(FLAG_VSYNC_HINT);
+  InitAudioDevice();
+  Sound ballHit = LoadSound("ballHitSound.mp3");
+  //Music themeSong = LoadMusicStream("mazieThemeSong.m4a");
+  //PlayMusicStream(themeSong);
 
   float frameTime = (1/60.0);
   float dt;
@@ -293,6 +364,36 @@ int main()
   while(!WindowShouldClose())
   {
     dt = frameTime;
+
+    //UpdateMusicStream(themeSong);
+
+    if (IsWindowResized() && !IsWindowFullscreen())
+    {
+      screenWidth = GetScreenWidth();
+      screenHeight = GetScreenHeight();
+    }
+
+    // check for alt + enter
+    if (IsKeyPressed(KEY_ENTER) && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)))
+    {
+      // see what display we are on right now
+      int display = GetCurrentMonitor();
+
+
+      if (IsWindowFullscreen())
+      {
+        // if we are full screen, then go back to the windowed size
+        SetWindowSize(screenWidth, screenHeight);
+      }
+      else
+      {
+        // if we are not full screen, set the window size to match the monitor we are on
+        SetWindowSize(GetMonitorWidth(display), GetMonitorHeight(display));
+      }
+
+      // toggle the state
+      ToggleFullscreen();
+    }
 
     //arrows cause acceleration on ball1
     ballP1.accel.x = 0;
@@ -318,6 +419,12 @@ int main()
     if(IsKeyPressed(KEY_A)){ballP2.vel.x -= pressImpulse*frameTime;}
     if(IsKeyPressed(KEY_D)){ballP2.vel.x += pressImpulse*frameTime;}
 
+    //update velocities
+    for (int i0 = 0; i0 < nBalls; i0++)
+    {
+      if (ballPtrVect[i0]->active){ballPtrVect[i0]->updateVel(dt);}
+    }
+
     clearToAdvanceT = 0;
     soonestPendingCollisionTime = 7e9;
     pendingColTime = 7e9;
@@ -329,12 +436,12 @@ int main()
       //iterate over balls checking for collisions
       for (int i0 = 0; i0 < nBalls; i0++)
       {
-        if(ballPtrVect[i0]->pos.x > 1e9){continue;}//balls with a large positive x have been hit into pockets and are out of play...
+        if(!ballPtrVect[i0]->active){continue;}
         for (int i1 = i0+1; i1 < nBalls; i1++)
         {
-          if(ballPtrVect[i1]->pos.x > 1e9){continue;}//balls with a large positive x have been hit into pockets and are out of play...
+          if(!ballPtrVect[i1]->active){continue;}
           pendingColTime = calcCollisionTime(ballPtrVect[i0],ballPtrVect[i1]);
-          if(pendingColTime<dt)//could cause a bug?
+          if(pendingColTime<dt)
           {
             soonestPendingCollisionTime = pendingColTime;
             collisionBall1 = i0;
@@ -347,6 +454,7 @@ int main()
       //if collision imminent, advance time to collision and resolve collision
       if(collisionFound)
       {
+        PlaySound(ballHit);
         for(int i0=0;i0<nBalls;i0++)
         {
           ballPtrVect[i0]->updatePos(soonestPendingCollisionTime);
@@ -383,7 +491,9 @@ int main()
     {
       ballPtrVect[i0]->draw();
     }
-    DrawFPS(20,682);
+    DrawFPS(20,882);
+    DrawText("Red", 1500, 20, 24, BLACK);
+    DrawText("Blue", 1600, 20, 24, BLACK);
     EndDrawing();
   }
   CloseWindow();
